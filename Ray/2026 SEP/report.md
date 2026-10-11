@@ -32,5 +32,5 @@
 
 ====
 ## Total
-1 Issue/PR
-3 Review
+- 1 Issue/PR
+- 3 Review
