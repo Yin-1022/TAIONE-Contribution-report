@@ -33,4 +33,23 @@
 ====
 ## Total
 - 1 Issue/PR
+    - **Improve JSON read error context #66878**
+    Improves error messages for malformed JSON and JSONL inputs in ray.data.read_json() by including the offending input file path, which wasn't identified before, while preserving the original parsing diagnostics and adding regression tests for the adjustment.  
+    PR: https://github.com/ray-project/ray/pull/66878  
+    Issue: https://github.com/ray-project/ray/issues/66877
+
 - 3 Review
+    - **Honor per-task retry policy during actor restart #66818**  
+    Identified an incorrect code review suggestion regarding absl::flat_hash_map::erase(). Verified that the method returns void, confirming that the existing iterator handling was correct and preventing a potential compilation error.  
+    PR: https://github.com/ray-project/ray/pull/66818  
+    Review: https://github.com/ray-project/ray/pull/66818#discussion_r4237514814
+
+    - **Write Delta timestamps as microseconds in write_delta #66907**  
+    Tested timestamp conversion overflow handling and suggested regression tests for out-of-range timestamps and timestamp-based map keys. Both suggestions were subsequently addressed by the PR author.  
+    PR: https://github.com/ray-project/ray/pull/66907  
+    Review: https://github.com/ray-project/ray/pull/66907#issuecomment-6095431852
+
+    - **Push column selections through Union #66879**  
+    Verified that projection pushdown correctly prunes unused columns in both Parquet readers. Suggested an additional regression test with sample code to ensure column pruning reaches the underlying data sources rather than only modifying the logical plan.  
+    PR: https://github.com/ray-project/ray/pull/66879  
+    Review: https://github.com/ray-project/ray/pull/66879#issuecomment-6105377231
