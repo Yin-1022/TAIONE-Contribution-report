@@ -33,23 +33,32 @@
 ====
 ## Total
 - 1 Issue/PR
-    - **Improve JSON read error context #66878**
+    - **Improve JSON read error context #66878**  
     Improves error messages for malformed JSON and JSONL inputs in ray.data.read_json() by including the offending input file path, which wasn't identified before, while preserving the original parsing diagnostics and adding regression tests for the adjustment.  
     PR: https://github.com/ray-project/ray/pull/66878  
     Issue: https://github.com/ray-project/ray/issues/66877
 
 - 3 Review
-    - **Honor per-task retry policy during actor restart #66818**  
-    Identified an incorrect code review suggestion regarding absl::flat_hash_map::erase(). Verified that the method returns void, confirming that the existing iterator handling was correct and preventing a potential compilation error.  
-    PR: https://github.com/ray-project/ray/pull/66818  
-    Review: https://github.com/ray-project/ray/pull/66818#discussion_r4237514814
+    - **<u>[Core] Honor per-task retry policy during actor restart #66818</u>**  
+    This PR improves actor task handling during restarts by respecting per-task retry policies, allowing non-retryable tasks to fail immediately while preserving retryable tasks.
+    
+        I Identified an incorrect code review suggestion regarding absl::flat_hash_map::erase().and verified that the method returns void, confirming that the existing iterator handling was correct and preventing a potential compilation error.
 
-    - **Write Delta timestamps as microseconds in write_delta #66907**  
-    Tested timestamp conversion overflow handling and suggested regression tests for out-of-range timestamps and timestamp-based map keys. Both suggestions were subsequently addressed by the PR author.  
-    PR: https://github.com/ray-project/ray/pull/66907  
-    Review: https://github.com/ray-project/ray/pull/66907#issuecomment-6095431852
+        PR: https://github.com/ray-project/ray/pull/66818  
+        Review: https://github.com/ray-project/ray/pull/66818#discussion_r4237514814
 
-    - **Push column selections through Union #66879**  
-    Verified that projection pushdown correctly prunes unused columns in both Parquet readers. Suggested an additional regression test with sample code to ensure column pruning reaches the underlying data sources rather than only modifying the logical plan.  
-    PR: https://github.com/ray-project/ray/pull/66879  
-    Review: https://github.com/ray-project/ray/pull/66879#issuecomment-6105377231
+    - **<u>[Data] Write Delta timestamps as microseconds in write_delta #66907</u>**  
+    This PR improves Delta Lake compatibility by converting timestamps, including nested types, to microsecond precision.
+
+        I tested timestamp conversion overflow handling and suggested regression tests for out-of-range timestamps and timestamp-based map keys. Both suggestions were subsequently addressed by the PR author.
+
+        PR: https://github.com/ray-project/ray/pull/66907  
+        Review: https://github.com/ray-project/ray/pull/66907#issuecomment-6095431852
+
+    - **<u>[Data] Push column selections through Union #66879</u>**  
+    This PR optimizes Ray Data by pushing column selections through Union operators, enabling earlier column pruning in individual data sources.
+    
+        I locally verified the optimization using two Parquet inputs and suggested an additional regression test to ensure unused columns are pruned at the reader level, providing a working test example.
+
+        PR: https://github.com/ray-project/ray/pull/66879  
+        Review: https://github.com/ray-project/ray/pull/66879#issuecomment-6105377231
