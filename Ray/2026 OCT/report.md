@@ -1,5 +1,6 @@
 2026-10-24
 - Opened a PR (#67374) to fix issue #67312 by ensuring output backpressure is only counted when unread output exists, with regression tests covering terminal-only waits and pending output scenarios.
+- Reworked PR #67164 after #67157 superseded its original constructor-time fix, adapting it to the new plan-time BindGeneratedIdColumn flow to distinguish physical Parquet-column conflicts from synthesized path / row_hash collisions, with regression tests preserving the intended behavior.
 
 2026-10-23
 - Identified and opened an issue (#67312) while reviewing PR #67180, reporting that terminal-only waits were incorrectly counted as task output backpressure despite having no unread output.
