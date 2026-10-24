@@ -18,13 +18,18 @@
 - Help review a Ray Serve PR (#66910) and identify a recovery edge case where redeploying the same configuration after terminal deployment actor failure does not reset retries or recover the deployment
 
 ## Total
-- 1 Issue/PR
-    - **Reject duplicate synthesized column names #67164**  
+- 2 Issue/PR
+    - **[Data] Reject duplicate synthesized column names #67164**  
     Prevents synthesized columns in Parquet DataSourceV2 from silently overwriting one another when they share the same name, such as a generated checkpoint ID colliding with the synthesized `path` or `row_hash` column. Adds early validation and regression tests for conflicting and non-conflicting synthesized column configurations.  
     PR: https://github.com/ray-project/ray/pull/67164  
     Issue: https://github.com/ray-project/ray/issues/67002
 
-- 3 Review
+    - **[Data] Avoid counting terminal waits as output backpressure #67374**
+    Identified and reported a pre-existing metrics accounting issue (#67312) while reviewing PR #67180, where exhausted tasks waiting only for terminal confirmation were incorrectly counted as experiencing output backpressure. Submitted a PR to distinguish genuine unread-output backpressure from terminal-only waits, with regression tests covering empty tasks, unread output, and pending output after stream exhaustion.
+    PR: https://github.com/ray-project/ray/pull/67374
+    Issue: https://github.com/ray-project/ray/issues/67312
+
+- 4 Review
     - **<u>[Serve] Surface terminal deployment actor failures outside UPDATING #66910</u>**  
     This PR improves Ray Serve deployment status handling by surfacing terminal deployment actor failures across more deployment states instead of leaving deployments indefinitely marked as retrying.  
 
@@ -53,3 +58,14 @@
         The discussion concluded that the test-only fix is reasonable for this PR, while the default ordering semantics may deserve a separate follow-up issue.  
         PR: https://github.com/ray-project/ray/pull/67161  
         Review: https://github.com/ray-project/ray/pull/67161#discussion_r4322072170
+
+    ---
+
+    - **<u>[Data] Finalize exhausted tasks without output-read budget #67180</u>**
+    This PR fixes a Ray Data execution issue where exhausted tasks could remain active when the output-read budget was zero, delaying task finalization and resource release.
+
+        I independently tested the terminal-completion retry mechanism through the real executor and verified that terminal errors do not overtake deferred final outputs when using the threaded metadata fetcher. I confirmed the expected ACTIVE → DRAINED → FINISHED lifecycle and found no blocking correctness issues.
+
+        During the review, I also discovered a separate, pre-existing output-backpressure accounting issue, which led to issue #67312 and my follow-up PR #67374.
+        PR: https://github.com/ray-project/ray/pull/67180
+        Review: https://github.com/ray-project/ray/pull/67180#issuecomment-6355775805
