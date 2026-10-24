@@ -21,12 +21,17 @@
 - 2 Issue/PR
     - **[Data] Reject duplicate synthesized column names #67164**  
     Prevents synthesized columns in Parquet DataSourceV2 from silently overwriting one another when they share the same name, such as a generated checkpoint ID colliding with the synthesized `path` or `row_hash` column. Adds early validation and regression tests for conflicting and non-conflicting synthesized column configurations.  
-    PR: https://github.com/ray-project/ray/pull/67164  
-    Issue: https://github.com/ray-project/ray/issues/67002
+      - Update: PR #67157 later moved generated-ID binding from ParquetDatasourceV2 construction time to the plan-time BindGeneratedIdColumn rule, superseding the original implementation and incidentally preventing the silent overwrite. 
+        
+        I reworked #67164 for the new architecture so BindGeneratedIdColumn now explicitly distinguishes collisions with physical Parquet columns from collisions with synthesized columns such as path and row_hash. 
+        This avoids misreporting synthesized-column conflicts as input-data schema conflicts, provides more accurate guidance to users, and adds regression coverage to preserve the intended collision semantics across future generated-ID or synthesized-column changes.  
+
+      PR: https://github.com/ray-project/ray/pull/67164  
+      Issue: https://github.com/ray-project/ray/issues/67002
 
     - **[Data] Avoid counting terminal waits as output backpressure #67374**
-    Identified and reported a pre-existing metrics accounting issue (#67312) while reviewing PR #67180, where exhausted tasks waiting only for terminal confirmation were incorrectly counted as experiencing output backpressure. Submitted a PR to distinguish genuine unread-output backpressure from terminal-only waits, with regression tests covering empty tasks, unread output, and pending output after stream exhaustion.
-    PR: https://github.com/ray-project/ray/pull/67374
+    Identified and reported a pre-existing metrics accounting issue (#67312) while reviewing PR #67180, where exhausted tasks waiting only for terminal confirmation were incorrectly counted as experiencing output backpressure. Submitted a PR to distinguish genuine unread-output backpressure from terminal-only waits, with regression tests covering empty tasks, unread output, and pending output after stream exhaustion.  
+    PR: https://github.com/ray-project/ray/pull/67374  
     Issue: https://github.com/ray-project/ray/issues/67312
 
 - 4 Review
