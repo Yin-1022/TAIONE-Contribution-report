@@ -1,3 +1,10 @@
+2026-10-27
+- Updated PR #67374 based on maintainer review by consolidating repetitive output-backpressure regression tests into a cleaner parametrized test while preserving the same coverage.
+- Help review a Ray Data LLM PR (#67460) and verify that disabled request limiting works correctly and that the original prompt is preserved when request preparation mutates the input before an error.
+- Help review a Ray Core PR (#67461) and confirm that the previous log-based readiness check could fire before the entrypoint process started, while the new atomic PID-file signal correctly represents process readiness.
+- Help review a Ray Serve PR (#67434) and identify a shutdown-timing edge case where the new 10ms polling floor can consume very small graceful-shutdown timeout budgets before completion is observed.
+
+
 2026-10-26
 - Opened issue #67415 identifying two schema-validation defects in Dataset.join(validate_schemas=True): asymmetric on / right_on keys can bypass validation because each side is checked against the wrong schema, while valid multi-key joins can be rejected because key types are collected in schema order rather than configured key order.
 - Reviewed PR #67406 and independently verified its NULL-sharding logic with multi-key shard_keys, including rows where either or both shard keys are NULL, and suggested adding regression coverage for the newly introduced multi-key OR / AND predicate construction.
@@ -64,7 +71,7 @@
 
         Issue: https://github.com/ray-project/ray/issues/67415
 
-- 7 Review
+- 10 Review
     - **<u>[Serve] Surface terminal deployment actor failures outside UPDATING #66910</u>**  
     This PR improves Ray Serve deployment status handling by surfacing terminal deployment actor failures across more deployment states instead of leaving deployments indefinitely marked as retrying.  
 
@@ -143,3 +150,33 @@
 
         PR: https://github.com/ray-project/ray/pull/67373  
         Review: https://github.com/ray-project/ray/pull/67373#issuecomment-6416938166
+
+    ---
+
+    - **<u>[Data][LLM] Fix max_pending_requests<=0 crash and empty prompt in vLLM error rows #67460</u>**  
+    This PR fixes Ray Data LLM inference failures when request limiting is disabled and prevents the original prompt from being lost in error rows after request preparation mutates the input.  
+
+        I verified the async nullcontext() path and locally exercised an error occurring after the prompt had already been removed from the input row, confirming that the original prompt is still preserved correctly.  
+
+        PR: https://github.com/ray-project/ray/pull/67460  
+        Review: https://github.com/ray-project/ray/pull/67460#issuecomment-6446564315
+
+    ---
+
+    - **<u>[Core] Deflake _run_hanging_command tests #67461</u>**  
+    This PR replaces a log-based subprocess readiness check in Ray Jobs tests with an atomically published PID file to remove a startup race.
+
+        I traced the entrypoint launch sequence and confirmed that the old "Waiting..." check could succeed before the shell actually started, while the new PID-file signal exposes a complete PID belonging to a live process and remains compatible with the affected callers.
+
+        PR: https://github.com/ray-project/ray/pull/67461  
+        Review: https://github.com/ray-project/ray/pull/67461#issuecomment-6447258630
+
+    ---
+
+    - **<u>[Serve] Don't busy-loop the replica drain when graceful_shutdown_wait_loop_s=0 #67434</u>**  
+    This PR prevents Ray Serve replica shutdown from busy-looping at graceful_shutdown_wait_loop_s=0 by introducing a 10ms minimum polling interval and rate-limiting drain logs.
+
+        I verified that immediate HAProxy checks and minimum draining-period semantics remain intact, and identified a non-blocking edge case where very small graceful_shutdown_timeout_s values can expire before the next 10ms polling check observes request completion.  
+
+        PR: https://github.com/ray-project/ray/pull/67434  
+        Review: https://github.com/ray-project/ray/pull/67434#issuecomment-6449026658
