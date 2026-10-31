@@ -1,3 +1,22 @@
+2026-10-31
+- Attempted to find another issue but didn't get much meaningful result :(
+- Reviewed Ray Data PR #67645 and identified a regression where S3 schema inference bypasses RetryingPyFileSystem without restoring Ray-level retry semantics. 
+
+2026-10-30
+- Updated Ray Data PR #67505 after reviewer feedback by rejecting duplicate join keys before execution and adding regression coverage for duplicate keys on both operands.
+- Opened Ray Data issue #67604 for contradictory Dataset.repartition() behavior that warns shuffle=True will be ignored before rejecting the same argument combination.
+- Reviewed Ray Data PR #67576 and verified Pandas metadata handling across Arrow-backed list, struct, map, and dictionary columns, control extension dtypes, map_batches(), and Parquet round-trips.
+
+2026-10-29
+- Reviewed Ray Data PR #67492 and verified Normalizer zero-row handling plus Vectorizer integer-count and missing-value behavior across multiple columns, append mode, and Pandas nullable values.
+- Reviewed Ray Data PR #67465 and identified a remaining correctness issue where NaN stratification keys miss the precomputed largest-remainder allocation, causing train_test_split() to return fewer test rows than requested.
+- Reviewed Ray Data PR #67524 and identified stale-cache correctness issues in OrdinalEncoder, OneHotEncoder, and LabelEncoder when encoder statistics are mutated in place without changing dictionary identity or size.
+
+
+2026-10-28
+- Opened PR #67505 for issue #67415 to fix asymmetric and multi-key join schema validation by checking each side against its configured keys and preserving positional key order.
+- Help review a Ray Data Parquet PR (#67469) and verify that lazy row-group fragment construction preserves row-group and partition semantics while deferring footer access until scan time.
+
 2026-10-27
 - Updated PR #67374 based on maintainer review by consolidating repetitive output-backpressure regression tests into a cleaner parametrized test while preserving the same coverage.
 - Help review a Ray Data LLM PR (#67460) and verify that disabled request limiting works correctly and that the original prompt is preserved when request preparation mutates the input before an error.
@@ -35,7 +54,7 @@
 - Help review a Ray Serve PR (#66910) and identify a recovery edge case where redeploying the same configuration after terminal deployment actor failure does not reset retries or recover the deployment
 
 ## Total
-- 4 Issue/PR
+- 5 Issue/PR
     - **[Data] Reject duplicate synthesized column names #67164**  
     Prevents synthesized columns in Parquet DataSourceV2 from silently overwriting one another when they share the same name, such as a generated checkpoint ID colliding with the synthesized `path` or `row_hash` column. Adds early validation and regression tests for conflicting and non-conflicting synthesized column configurations.  
       - Update: PR #67157 later moved generated-ID binding from ParquetDatasourceV2 construction time to the plan-time BindGeneratedIdColumn rule, superseding the original implementation and incidentally preventing the silent overwrite. 
@@ -65,13 +84,23 @@
     ---
 
     - **[Data] Dataset.join(validate_schemas=True) mishandles asymmetric and multi-key joins #67415**  
-        Identified two correctness issues in join schema validation: asymmetric on / right_on keys are checked against the wrong schemas, allowing missing or incompatible keys to bypass validation, while multi-key types are collected in schema order instead of configured key order, causing valid joins to be rejected.  
+        Identified two correctness issues in join schema validation: asymmetric on / right_on keys are checked against the wrong schemas, while multi-key types are collected in schema order instead of configured key order, causing valid joins to be rejected.  
 
-        I reproduced both behaviors on current master and proposed validating each side against its own configured keys while preserving positional key order.  
+        I reproduced both behaviors on master and opened PR #67505 to validate each side against its own configured keys, preserve positional key order, and add regression tests covering asymmetric and reordered multi-key joins. 
 
         Issue: https://github.com/ray-project/ray/issues/67415
+        PR: https://github.com/ray-project/ray/pull/67505
 
-- 10 Review
+    ---
+
+    - **[Data] repartition() warns that shuffle is ignored before rejecting the same argument #67604**
+        Identified a public API contract inconsistency in Dataset.repartition(): when target_num_rows_per_block is combined with shuffle=True, Ray first warns that shuffle will be ignored and then immediately raises a ValueError saying the combination is invalid.
+
+        I reproduced the behavior on current master, checked related issues and historical API intent, and proposed keeping the existing ValueError while removing the contradictory warning, with regression coverage to ensure the invalid combination produces one consistent response.
+
+        Issue: https://github.com/ray-project/ray/issues/67604
+
+- 16 Review
     - **<u>[Serve] Surface terminal deployment actor failures outside UPDATING #66910</u>**  
     This PR improves Ray Serve deployment status handling by surfacing terminal deployment actor failures across more deployment states instead of leaving deployments indefinitely marked as retrying.  
 
@@ -180,3 +209,65 @@
 
         PR: https://github.com/ray-project/ray/pull/67434  
         Review: https://github.com/ray-project/ray/pull/67434#issuecomment-6449026658
+
+    ---
+
+    - **<u>[Data] build row-group sub-fragments lazily so footer reads run in the scan threads #67469</u>**  
+    This PR replaces eager fragment.subset() construction with make_fragment() for grouped Parquet row groups, allowing footer reads to be deferred until the parallel scan stage.
+
+        I verified that non-contiguous row-group selection, partition expressions, and scan results remain equivalent, and confirmed that fragment construction no longer accesses the file until scanning begins.  
+
+        PR: https://github.com/ray-project/ray/pull/67469  
+        Review: https://github.com/ray-project/ray/pull/67469#issuecomment-6476275533
+
+    ---
+
+    - **<u>[Data] Avoid per-feature Series concat and float upcasting in Vectorizers and zero-norm NaNs in Normalizer #67492</u>**  
+    This PR improves HashingVectorizer and CountVectorizer by avoiding intermediate Pandas concatenations and fixes Normalizer so all-zero rows no longer produce NaNs.
+
+        I verified the behavior through the public transform_batch() path, covering all three normalization modes, append mode, multiple vectorized columns, integer count preservation, and missing values represented by None, np.nan, and pd.NA. The updated behavior matched the intended semantics.  
+
+        PR: https://github.com/ray-project/ray/pull/67492  
+        Review: https://github.com/ray-project/ray/pull/67492#issuecomment-6485554264
+
+    ---
+
+    - **<u>[Data] Fix train_test_split sizes lost to float truncation and stratified counts #67465</u>**  
+    This PR fixes floating-point truncation and uses largest-remainder allocation to preserve the requested size of stratified train/test splits.
+
+        I identified and reproduced a remaining correctness issue with NaN stratification keys. Because normalized NaN values still do not compare equal, the precomputed allocation can be missed and fall back to a floored per-group count, causing train_test_split() to return fewer test rows than requested.  
+
+        PR: https://github.com/ray-project/ray/pull/67465  
+        Review: https://github.com/ray-project/ray/pull/67465#issuecomment-6486452102
+
+    ---
+
+    - **<u>[Data] Cache PyArrow vocabulary arrays and inverse label mapping in encoders #67524</u>**  
+    This PR caches encoder lookup structures to avoid rebuilding PyArrow vocabulary arrays and inverse label mappings on every batch.
+
+        I identified and reproduced a stale-cache correctness issue in OrdinalEncoder, OneHotEncoder, and LabelEncoder. The cache only checks dictionary identity and length, so same-size in-place changes to stats_ are not detected, causing stale ordinal mappings, zeroed one-hot outputs for updated categories, and outdated inverse labels.  
+
+        PR: https://github.com/ray-project/ray/pull/67524  
+        Review: https://github.com/ray-project/ray/pull/67524#issuecomment-6486585464
+
+    ---
+
+    - **<u>[Data] Keep pandas metadata on Arrow blocks parsable by pandas #67576</u>**  
+    This PR rewrites Pandas metadata dtype names that Pandas cannot parse, allowing Arrow-backed columns to convert back to Pandas without failing while preserving already valid metadata.
+
+        I verified the behavior beyond the original list-column case using Arrow-backed struct, map, and dictionary columns, all of which round-tripped successfully with their values preserved. I also checked nullable integers, booleans, strings, categoricals, and timezone-aware datetimes as controls, and validated both the public map_batches(...).to_pandas() path and write_parquet() → pd.read_parquet() interoperability.
+
+        PR: https://github.com/ray-project/ray/pull/67576  
+        Review: https://github.com/ray-project/ray/pull/67576#issuecomment-6525885326
+
+    ---
+
+    - **<u>[Data] Skip the S3 HEAD request on each Parquet file open by passing listed file sizes #67645</u>**  
+    This PR reduces unnecessary S3 requests in the DataSourceV2 Parquet path by reusing file sizes already obtained during directory listing. It passes known sizes to PyArrow when opening Parquet files and bypasses RetryingPyFileSystem for sized S3 opens so PyArrow can avoid issuing an extra HEAD request before reading the footer.
+
+        I identified a retry regression in the schema-inference path. Unlike the footer-reader path, schema inference unwraps RetryingPyFileSystem for S3 without adding an explicit call_with_retry(), so errors configured through DataContext.retried_io_errors are no longer retried at the Ray layer.  
+        
+        I then reproduced the behavior with a fail-once filesystem: master retried the configured transient error and successfully inferred the schema on the second attempt, while the PR propagated the first failure immediately after the sized-open path was forced to unwrap the filesystem.  
+
+        PR: https://github.com/ray-project/ray/pull/67645  
+        Review: https://github.com/ray-project/ray/pull/67645#issuecomment-6544259452
