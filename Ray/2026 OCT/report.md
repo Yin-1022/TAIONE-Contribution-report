@@ -1,3 +1,8 @@
+2026-11-03
+- Reviewed Ray Data PR #67661, independently validating fill_null() correctness across Parquet and Arrow execution paths, including precision, type promotion, and null handling.
+- Reviewed Ray Data PR #67656, verifying partial predicate pushdown correctness and non-idempotent projection safeguards across 13 test cases.
+- Reviewed Ray Data PR #67725, identifying and reproducing a manifest batching issue where max_paths_per_output is exceeded by a single chunked file.
+
 2026-10-31
 - Attempted to find another issue but didn't get much meaningful result :(
 - Reviewed Ray Data PR #67645 and identified a regression where S3 schema inference bypasses RetryingPyFileSystem without restoring Ray-level retry semantics. 
@@ -67,7 +72,7 @@
 
     ---
 
-    - **[Data] Avoid counting terminal waits as output backpressure #67374**
+    - **[Data] Avoid counting terminal waits as output backpressure #67374**  
     Identified and reported a pre-existing metrics accounting issue (#67312) while reviewing PR #67180, where exhausted tasks waiting only for terminal confirmation were incorrectly counted as experiencing output backpressure. Submitted a PR to distinguish genuine unread-output backpressure from terminal-only waits, with regression tests covering empty tasks, unread output, and pending output after stream exhaustion.  
     PR: https://github.com/ray-project/ray/pull/67374  
     Issue: https://github.com/ray-project/ray/issues/67312
@@ -93,15 +98,15 @@
 
     ---
 
-    - **[Data] repartition() warns that shuffle is ignored before rejecting the same argument #67604**
+    - **[Data] repartition() warns that shuffle is ignored before rejecting the same argument #67604**  
         Identified a public API contract inconsistency in Dataset.repartition(): when target_num_rows_per_block is combined with shuffle=True, Ray first warns that shuffle will be ignored and then immediately raises a ValueError saying the combination is invalid.
 
         I reproduced the behavior on current master, checked related issues and historical API intent, and proposed keeping the existing ValueError while removing the contradictory warning, with regression coverage to ensure the invalid combination produces one consistent response.
 
         Issue: https://github.com/ray-project/ray/issues/67604
 
-- 16 Review
-    - **<u>[Serve] Surface terminal deployment actor failures outside UPDATING #66910</u>**  
+- 19 Review
+    - **<u>1. [Serve] Surface terminal deployment actor failures outside UPDATING #66910</u>**  
     This PR improves Ray Serve deployment status handling by surfacing terminal deployment actor failures across more deployment states instead of leaving deployments indefinitely marked as retrying.  
 
         I identified a recovery edge case where, after recreation retries are exhausted, redeploying the exact same deployment configuration returns no change and does not reset the exhausted retry state, leaving the deployment unable to recover unless its configuration or version changes.  
@@ -110,7 +115,7 @@
 
     ---
 
-    - **<u>[Data] Make zero_copy_batch=False copy default batches #67154</u>**  
+    - **<u>2. [Data] Make zero_copy_batch=False copy default batches #67154</u>**  
     This PR fixes writable batch behavior when `zero_copy_batch=False` and the default `batch_size=None` is used.  
         
         I traced and locally verified that the NumPy path performs two full-batch copies: one at the Arrow block level and another after NumPy conversion. 
@@ -121,7 +126,7 @@
 
     ---
 
-    - **<u>[Data] Deflake test_train_test_split by preserving block order #67161</u>**  
+    - **<u>3. [Data] Deflake test_train_test_split by preserving block order #67161</u>**  
     This PR stabilizes `train_test_split` tests by enabling deterministic block ordering with `preserve_order=True`.  
 
         I raised a concern that forcing ordered execution may cause the test to exercise behavior different from the default `preserve_order=False` setting, and questioned whether the flake instead exposes ambiguity in the ordering contract of `train_test_split(shuffle=False)`. 
@@ -132,7 +137,7 @@
 
     ---
 
-    - **<u>[Data] Finalize exhausted tasks without output-read budget #67180</u>**  
+    - **<u>4. [Data] Finalize exhausted tasks without output-read budget #67180</u>**  
     This PR fixes a Ray Data execution issue where exhausted tasks could remain active when the output-read budget was zero, delaying task finalization and resource release.
 
         I independently tested the terminal-completion retry mechanism through the real executor and verified that terminal errors do not overtake deferred final outputs when using the threaded metadata fetcher. I confirmed the expected ACTIVE → DRAINED → FINISHED lifecycle and found no blocking correctness issues.
@@ -143,7 +148,7 @@
 
     ---
 
-    - **<u>[Data] Account for HashShuffle aggregator GPU usage in logical resource accounting #67382</u>**  
+    - **<u>5. [Data] Account for HashShuffle aggregator GPU usage in logical resource accounting #67382</u>**  
     This PR updates HashShuffle resource accounting so aggregator GPUs configured through aggregator_ray_remote_args are reflected in operator and global logical GPU usage instead of being hardcoded to zero.  
 
         I raised a non-blocking semantic question around the new shutdown lifecycle behavior: after aggregator actors are released, the test still expects current_logical_usage() and running_logical_usage() to report the configured GPU footprint.
@@ -158,7 +163,7 @@
     
     ---
 
-    - **<u>[Data] Fix SQL sharding with null keys #67406</u>**  
+    - **<u>6. [Data] Fix SQL sharding with null keys #67406</u>**  
     This PR fixes silent row loss in ray.data.read_sql() when shard-key values are NULL, routing rows containing NULL shard keys to task 0 while preserving hash-based sharding for non-null rows.
 
         I independently tested the new multi-key path with NULL values in either shard key and with both keys NULL, confirming that every input row was preserved exactly once.
@@ -170,7 +175,7 @@
     
     ---
 
-    - **<u>[Data] Preserve Pandas extension dtypes for all-null columns #67373</u>**  
+    - **<u>7. [Data] Preserve Pandas extension dtypes for all-null columns #67373</u>**  
     This PR changes PandasBlockAccessor.to_arrow() so explicitly typed Pandas extension columns retain their concrete Arrow type when every value is null, instead of being coerced to Arrow null.
 
         I reviewed whether broadening the condition to all Pandas ExtensionDtypes could introduce unintended behavior, and locally tested nullable numeric, categorical, timezone-aware datetime, and period dtypes.
@@ -182,7 +187,7 @@
 
     ---
 
-    - **<u>[Data][LLM] Fix max_pending_requests<=0 crash and empty prompt in vLLM error rows #67460</u>**  
+    - **<u>8. [Data][LLM] Fix max_pending_requests<=0 crash and empty prompt in vLLM error rows #67460</u>**  
     This PR fixes Ray Data LLM inference failures when request limiting is disabled and prevents the original prompt from being lost in error rows after request preparation mutates the input.  
 
         I verified the async nullcontext() path and locally exercised an error occurring after the prompt had already been removed from the input row, confirming that the original prompt is still preserved correctly.  
@@ -192,7 +197,7 @@
 
     ---
 
-    - **<u>[Core] Deflake _run_hanging_command tests #67461</u>**  
+    - **<u>9. [Core] Deflake _run_hanging_command tests #67461</u>**  
     This PR replaces a log-based subprocess readiness check in Ray Jobs tests with an atomically published PID file to remove a startup race.
 
         I traced the entrypoint launch sequence and confirmed that the old "Waiting..." check could succeed before the shell actually started, while the new PID-file signal exposes a complete PID belonging to a live process and remains compatible with the affected callers.
@@ -202,7 +207,7 @@
 
     ---
 
-    - **<u>[Serve] Don't busy-loop the replica drain when graceful_shutdown_wait_loop_s=0 #67434</u>**  
+    - **<u>10. [Serve] Don't busy-loop the replica drain when graceful_shutdown_wait_loop_s=0 #67434</u>**  
     This PR prevents Ray Serve replica shutdown from busy-looping at graceful_shutdown_wait_loop_s=0 by introducing a 10ms minimum polling interval and rate-limiting drain logs.
 
         I verified that immediate HAProxy checks and minimum draining-period semantics remain intact, and identified a non-blocking edge case where very small graceful_shutdown_timeout_s values can expire before the next 10ms polling check observes request completion.  
@@ -212,7 +217,7 @@
 
     ---
 
-    - **<u>[Data] build row-group sub-fragments lazily so footer reads run in the scan threads #67469</u>**  
+    - **<u>11. [Data] build row-group sub-fragments lazily so footer reads run in the scan threads #67469</u>**  
     This PR replaces eager fragment.subset() construction with make_fragment() for grouped Parquet row groups, allowing footer reads to be deferred until the parallel scan stage.
 
         I verified that non-contiguous row-group selection, partition expressions, and scan results remain equivalent, and confirmed that fragment construction no longer accesses the file until scanning begins.  
@@ -222,7 +227,7 @@
 
     ---
 
-    - **<u>[Data] Avoid per-feature Series concat and float upcasting in Vectorizers and zero-norm NaNs in Normalizer #67492</u>**  
+    - **<u>12. [Data] Avoid per-feature Series concat and float upcasting in Vectorizers and zero-norm NaNs in Normalizer #67492</u>**  
     This PR improves HashingVectorizer and CountVectorizer by avoiding intermediate Pandas concatenations and fixes Normalizer so all-zero rows no longer produce NaNs.
 
         I verified the behavior through the public transform_batch() path, covering all three normalization modes, append mode, multiple vectorized columns, integer count preservation, and missing values represented by None, np.nan, and pd.NA. The updated behavior matched the intended semantics.  
@@ -232,7 +237,7 @@
 
     ---
 
-    - **<u>[Data] Fix train_test_split sizes lost to float truncation and stratified counts #67465</u>**  
+    - **<u>13. [Data] Fix train_test_split sizes lost to float truncation and stratified counts #67465</u>**  
     This PR fixes floating-point truncation and uses largest-remainder allocation to preserve the requested size of stratified train/test splits.
 
         I identified and reproduced a remaining correctness issue with NaN stratification keys. Because normalized NaN values still do not compare equal, the precomputed allocation can be missed and fall back to a floored per-group count, causing train_test_split() to return fewer test rows than requested.  
@@ -242,7 +247,7 @@
 
     ---
 
-    - **<u>[Data] Cache PyArrow vocabulary arrays and inverse label mapping in encoders #67524</u>**  
+    - **<u>14. [Data] Cache PyArrow vocabulary arrays and inverse label mapping in encoders #67524</u>**  
     This PR caches encoder lookup structures to avoid rebuilding PyArrow vocabulary arrays and inverse label mappings on every batch.
 
         I identified and reproduced a stale-cache correctness issue in OrdinalEncoder, OneHotEncoder, and LabelEncoder. The cache only checks dictionary identity and length, so same-size in-place changes to stats_ are not detected, causing stale ordinal mappings, zeroed one-hot outputs for updated categories, and outdated inverse labels.  
@@ -252,7 +257,7 @@
 
     ---
 
-    - **<u>[Data] Keep pandas metadata on Arrow blocks parsable by pandas #67576</u>**  
+    - **<u>15. [Data] Keep pandas metadata on Arrow blocks parsable by pandas #67576</u>**  
     This PR rewrites Pandas metadata dtype names that Pandas cannot parse, allowing Arrow-backed columns to convert back to Pandas without failing while preserving already valid metadata.
 
         I verified the behavior beyond the original list-column case using Arrow-backed struct, map, and dictionary columns, all of which round-tripped successfully with their values preserved. I also checked nullable integers, booleans, strings, categoricals, and timezone-aware datetimes as controls, and validated both the public map_batches(...).to_pandas() path and write_parquet() → pd.read_parquet() interoperability.
@@ -262,7 +267,7 @@
 
     ---
 
-    - **<u>[Data] Skip the S3 HEAD request on each Parquet file open by passing listed file sizes #67645</u>**  
+    - **<u>16. [Data] Skip the S3 HEAD request on each Parquet file open by passing listed file sizes #67645</u>**  
     This PR reduces unnecessary S3 requests in the DataSourceV2 Parquet path by reusing file sizes already obtained during directory listing. It passes known sizes to PyArrow when opening Parquet files and bypasses RetryingPyFileSystem for sized S3 opens so PyArrow can avoid issuing an extra HEAD request before reading the footer.
 
         I identified a retry regression in the schema-inference path. Unlike the footer-reader path, schema inference unwraps RetryingPyFileSystem for S3 without adding an explicit call_with_retry(), so errors configured through DataContext.retried_io_errors are no longer retried at the Ray layer.  
@@ -271,3 +276,37 @@
 
         PR: https://github.com/ray-project/ray/pull/67645  
         Review: https://github.com/ray-project/ray/pull/67645#issuecomment-6544259452
+
+    ---
+
+    - **<u>17. [Data] Add fill_null expression method #67661</u>**  
+    This PR introduces `fill_null()` for Ray Data expressions, including support for PyArrow evaluation and predicate pushdown.
+  
+        I validated the implementation across Parquet and in-memory Arrow execution paths, covering floating-point precision, type promotion, all-null columns, and comparison/arithmetic predicates. I also compared PyArrow Dataset scanner filtering against in-memory expression evaluation with independently specified expected results, including dictionary-encoded strings, decimal128, and timestamp columns. All 25 test cases passed, with no correctness inconsistencies reproduced.  
+
+        PR: https://github.com/ray-project/ray/pull/67661  
+        Review: https://github.com/ray-project/ray/pull/67661#issuecomment-6593229531
+
+    ---
+
+    - **<u>18. [Data] Push AND conjuncts on passthrough columns below a Project #67656</u>**  
+    This PR improves predicate pushdown by moving eligible AND conjuncts below projection operators while retaining predicates that depend on computed columns.
+
+        I verified the optimization across Parquet and in-memory Arrow paths, testing column overwrites, multi-stage renaming, nested predicates, and null preservation. I also confirmed that non-idempotent projections using `monotonically_increasing_id()` prevent unsafe predicate movement while deterministic projections remain eligible for optimization. 
+        
+        All 13 test cases matched their materialized baselines, and the optimized logical plans showed the expected predicate placement.
+
+        PR: https://github.com/ray-project/ray/pull/67656  
+        Review: https://github.com/ray-project/ray/pull/67656#issuecomment-6596330457
+
+    ---
+
+    - **<u>19. [Data] Add a shared byte-range line chunker for CSV and JSONL on DataSource V2 #67725</u>**  
+    This PR introduces shared byte-range chunking infrastructure for CSV and JSONL files in Ray DataSource V2, enabling large files to be divided into independent read units.  
+
+        I examined byte-range alignment and chunk metadata preservation, validating 72 reconstruction cases and four bin-packing scenarios. I then identified and reproduced a remaining batching issue in `LineChunkFileIndexer`: the `max_paths_per_output` threshold is checked only after all chunks of a file are appended, allowing a single large file to produce an oversized manifest. 
+        
+        A minimal reproduction with a 1,000-byte file, `chunk_size=100`, and `max_paths_per_output=3` produced one manifest containing 10 rows instead of respecting the configured limit. I reported the finding with reproducible code.  
+
+        PR: https://github.com/ray-project/ray/pull/67725  
+        Review: https://github.com/ray-project/ray/pull/67725#issuecomment-6596711584
