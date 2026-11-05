@@ -1,3 +1,9 @@
+2026-11-05
+- - Reviewed Ray Data PR #67845, independently validating LeRobot episode lookup, index contiguity, and vectorized delta computation across 24 test cases, while identifying a duplicate episode ID behavior difference.
+
+2026-11-04
+- Identified Ray Data issue #67814, profiling redundant schema unification in Arrow concatenation, reproducing a 4.04× overhead relative to native PyArrow, and proposing an identical-schema fast path.
+
 2026-11-03
 - Reviewed Ray Data PR #67661, independently validating fill_null() correctness across Parquet and Arrow execution paths, including precision, type promotion, and null handling.
 - Reviewed Ray Data PR #67656, verifying partial predicate pushdown correctness and non-idempotent projection safeguards across 13 test cases.
@@ -59,8 +65,8 @@
 - Help review a Ray Serve PR (#66910) and identify a recovery edge case where redeploying the same configuration after terminal deployment actor failure does not reset retries or recover the deployment
 
 ## Total
-- 5 Issue/PR
-    - **[Data] Reject duplicate synthesized column names #67164**  
+- 6 Issue/PR
+    - **1. [Data] Reject duplicate synthesized column names #67164**  
     Prevents synthesized columns in Parquet DataSourceV2 from silently overwriting one another when they share the same name, such as a generated checkpoint ID colliding with the synthesized `path` or `row_hash` column. Adds early validation and regression tests for conflicting and non-conflicting synthesized column configurations.  
       - Update: PR #67157 later moved generated-ID binding from ParquetDatasourceV2 construction time to the plan-time BindGeneratedIdColumn rule, superseding the original implementation and incidentally preventing the silent overwrite. 
         
@@ -72,14 +78,14 @@
 
     ---
 
-    - **[Data] Avoid counting terminal waits as output backpressure #67374**  
+    - **2. [Data] Avoid counting terminal waits as output backpressure #67374**  
     Identified and reported a pre-existing metrics accounting issue (#67312) while reviewing PR #67180, where exhausted tasks waiting only for terminal confirmation were incorrectly counted as experiencing output backpressure. Submitted a PR to distinguish genuine unread-output backpressure from terminal-only waits, with regression tests covering empty tasks, unread output, and pending output after stream exhaustion.  
     PR: https://github.com/ray-project/ray/pull/67374  
     Issue: https://github.com/ray-project/ray/issues/67312
 
     ---
 
-    - **[Data] Dataset.mix does not consistently reject non-finite weights #67387**
+    - **3.[Data] Dataset.mix does not consistently reject non-finite weights #67387**
     Identified inconsistent validation of non-finite weights in Dataset.mix(). The existing positivity-only check allows NaN and positive infinity to pass, while negative infinity is rejected as a positivity error rather than as a non-finite value.  
         
         I reproduced the behavior through the public Dataset.mix() API and traced the same validation assumption through both the logical Mix operator and physical MixOperator. Proposed requiring weights to be both finite and positive before normalization or execution, so NaN and ±inf are rejected consistently.  
@@ -88,24 +94,33 @@
 
     ---
 
-    - **[Data] Dataset.join(validate_schemas=True) mishandles asymmetric and multi-key joins #67415**  
+    - **4. [Data] Dataset.join(validate_schemas=True) mishandles asymmetric and multi-key joins #67415**  
         Identified two correctness issues in join schema validation: asymmetric on / right_on keys are checked against the wrong schemas, while multi-key types are collected in schema order instead of configured key order, causing valid joins to be rejected.  
 
         I reproduced both behaviors on master and opened PR #67505 to validate each side against its own configured keys, preserve positional key order, and add regression tests covering asymmetric and reordered multi-key joins. 
 
-        Issue: https://github.com/ray-project/ray/issues/67415
+        Issue: https://github.com/ray-project/ray/issues/67415  
         PR: https://github.com/ray-project/ray/pull/67505
 
     ---
 
-    - **[Data] repartition() warns that shuffle is ignored before rejecting the same argument #67604**  
+    - **5. [Data] repartition() warns that shuffle is ignored before rejecting the same argument #67604**  
         Identified a public API contract inconsistency in Dataset.repartition(): when target_num_rows_per_block is combined with shuffle=True, Ray first warns that shuffle will be ignored and then immediately raises a ValueError saying the combination is invalid.
 
         I reproduced the behavior on current master, checked related issues and historical API intent, and proposed keeping the existing ValueError while removing the contradictory warning, with regression coverage to ensure the invalid combination produces one consistent response.
 
         Issue: https://github.com/ray-project/ray/issues/67604
 
-- 19 Review
+    ---
+
+    - **6.[Data] Redundant schema unification overhead when concatenating Arrow tables with identical schemas #67814**  
+    Identified a performance bottleneck in Ray Data's transform_pyarrow.concat(), where identical Arrow schemas still undergo unnecessary schema unification before concatenation.  
+
+        I reproduced the overhead on current master, finding that Ray's concatenation took 4.04× as long as native PyArrow, with unify_schemas() accounting for approximately 71% of execution time. I implemented and locally validated an early fast path, achieving a 4.22× speedup in direct benchmarking and up to 1.49× in batch assembly, while passing 119 existing regression tests. The issue proposes bypassing redundant schema unification while preserving existing behavior for mismatched schemas.  
+
+        Issue: https://github.com/ray-project/ray/issues/67814
+
+- 20 Review
     - **<u>1. [Serve] Surface terminal deployment actor failures outside UPDATING #66910</u>**  
     This PR improves Ray Serve deployment status handling by surfacing terminal deployment actor failures across more deployment states instead of leaving deployments indefinitely marked as retrying.  
 
@@ -310,3 +325,15 @@
 
         PR: https://github.com/ray-project/ray/pull/67725  
         Review: https://github.com/ray-project/ray/pull/67725#issuecomment-6596711584
+
+    ---
+
+    - **20. [Data] Vectorize LeRobot delta segment preparation and validate index contiguity #67845**  
+    This PR optimizes LeRobot's temporal-window processing by replacing per-row Python list conversions and dictionary lookups with vectorized NumPy and PyArrow operations. 
+
+        I independently tested 24 cases covering reordered and non-contiguous episode IDs, duplicate and missing indices, episode boundaries, and varied anchor selections. The new implementation correctly rejected invalid index sequences while preserving expected delta computation behavior. 
+        
+        I also identified a behavioral difference with duplicate episode IDs: the original dictionary lookup selects the last occurrence, whereas `pc.index_in()` selects the first. Therefore I prepared a minimal PyArrow reproduction and raised this as a question about upstream uniqueness guarantees.  
+
+        PR: https://github.com/ray-project/ray/pull/67845  
+        Review: https://github.com/ray-project/ray/pull/67845#issuecomment-6648268333
