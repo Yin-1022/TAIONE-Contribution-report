@@ -1,5 +1,13 @@
+2026-11-07
+- Opened Ray Data PR #67935 to optimize identical-schema Arrow concatenation, achieving a 4.22× speedup in direct benchmarks and up to 2.68× in block building, while validating regression tests and investigating Dataset iteration performance variability.
+- Reviewed Ray Data PR #67896, independently validating JSON expansion, key collisions, list preservation, custom decoder outputs, and image encoding/decoding across multiple edge cases.
+- Reviewed Ray Data PR #67912, independently validating Concatenator's missing-column handling, flattening, index alignment, empty inputs, and cross-block schema behavior through Pandas and Ray Dataset test.
+
+2026-11-06
+- Reviewed Ray Data PR #67891, independently testing large-integer standard deviation calculations across six edge cases, identifying significant Float64 precision loss and a potential uint64 overflow issue.
+
 2026-11-05
-- - Reviewed Ray Data PR #67845, independently validating LeRobot episode lookup, index contiguity, and vectorized delta computation across 24 test cases, while identifying a duplicate episode ID behavior difference.
+- Reviewed Ray Data PR #67845, independently validating LeRobot episode lookup, index contiguity, and vectorized delta computation across 24 test cases, while identifying a duplicate episode ID behavior difference.
 
 2026-11-04
 - Identified Ray Data issue #67814, profiling redundant schema unification in Arrow concatenation, reproducing a 4.04× overhead relative to native PyArrow, and proposing an identical-schema fast path.
@@ -114,13 +122,14 @@
     ---
 
     - **6.[Data] Redundant schema unification overhead when concatenating Arrow tables with identical schemas #67814**  
-    Identified a performance bottleneck in Ray Data's transform_pyarrow.concat(), where identical Arrow schemas still undergo unnecessary schema unification before concatenation.  
+    Identified redundant schema unification in Ray Data's transform_pyarrow.concat(), accounting for approximately 71% of concatenation time with identical Arrow schemas.
 
-        I reproduced the overhead on current master, finding that Ray's concatenation took 4.04× as long as native PyArrow, with unify_schemas() accounting for approximately 71% of execution time. I implemented and locally validated an early fast path, achieving a 4.22× speedup in direct benchmarking and up to 1.49× in batch assembly, while passing 119 existing regression tests. The issue proposes bypassing redundant schema unification while preserving existing behavior for mismatched schemas.  
+        I reproduced the performance bottleneck and opened PR #67935 to introduce an identical-schema fast path while preserving existing schema reconciliation. The optimization achieved a 4.22× speedup in direct concatenation, up to 2.68× in block building, and up to 1.49× in batch assembly. I also validated regression tests and conducted additional Dataset iteration benchmarks, finding substantial runtime variability without a confirmed end-to-end regression.
 
         Issue: https://github.com/ray-project/ray/issues/67814
+        PR: https://github.com/ray-project/ray/pull/67935
 
-- 20 Review
+- 23 Review
     - **<u>1. [Serve] Surface terminal deployment actor failures outside UPDATING #66910</u>**  
     This PR improves Ray Serve deployment status handling by surfacing terminal deployment actor failures across more deployment states instead of leaving deployments indefinitely marked as retrying.  
 
@@ -337,3 +346,33 @@
 
         PR: https://github.com/ray-project/ray/pull/67845  
         Review: https://github.com/ray-project/ray/pull/67845#issuecomment-6648268333
+
+    ---
+
+    - **21. <u>[Data] Fix std() on integer columns with values beyond 2\*\*53 #67891</u>**
+    This PR fixes an `ArrowInvalid` exception in Ray Data's standard deviation aggregation by allowing large integer columns to be cast to Float64 before computing squared differences.
+
+        I independently tested six large-integer edge cases, including adjacent integers, negative values, and uint64 boundary values. Direct accessor-level testing revealed significant precision loss, including zero variance for distinct integers, and exposed a potential overflow issue in the existing integer-sum-based mean calculation. I prepared a minimal reproduction and review feedback to clarify the intended numerical accuracy guarantees.
+
+        PR: https://github.com/ray-project/ray/pull/67891  
+        Review: https://github.com/ray-project/ray/pull/67891#issuecomment-6702250542
+
+    ---
+
+    - **22. <u>[Data] Fix WebDataset expand_json key collision, 1-element list unwrapping, and .jpeg decoding #67896</u>**  
+    This PR addresses multiple correctness issues in Ray Data's WebDataset datasource, including JSON key collisions, missing JSON fields, unintended single-element list unwrapping, and image extension handling.  
+
+        I independently tested JSON expansion with nested structures, missing fields, key collisions, and mixed data types. I also verified list preservation and Arrow conversion for custom decoder outputs, along with 10 image encoding/decoding cases across different extensions and capitalization. The tested scenarios behaved as expected.  
+
+        PR: https://github.com/ray-project/ray/pull/67896  
+        Review: https://github.com/ray-project/ray/pull/67896#issuecomment-6708105669
+
+    ---
+
+    - **23. [Data] Fix Concatenator missing-column handling when raise_if_missing=False #67912**  
+    This PR fixes a correctness issue in Ray Data's `Concatenator` preprocessor, where missing input columns could trigger a `KeyError` despite `raise_if_missing=False`.  
+
+        I independently reviewed and tested the updated implementation, covering partial and complete missing-column scenarios, `flatten=True`, non-default Pandas indices, and empty DataFrames. I also validated end-to-end Ray Dataset execution, including Arrow Tensor schema generation, `take_all()`, `to_pandas()`, and repartitioning.  
+
+        PR: https://github.com/ray-project/ray/pull/67912  
+        Review: https://github.com/ray-project/ray/pull/67912#issuecomment-6708442794
