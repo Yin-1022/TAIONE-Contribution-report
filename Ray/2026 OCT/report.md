@@ -1,3 +1,11 @@
+2026-11-09
+- Updated PR #67935 based on maintainer feedback by optimizing shared schema deduplication, removing a redundant concat fast path, and independently validating correctness and performance through regression tests and A/B/C benchmarks.
+- Reviewed Ray Data PR #67900, independently benchmarking Delta Log metadata overhead across 1K–20K files and validating file-size path mappings across 13 partition values, including special characters and multiple URL-encoding levels.
+
+2026-11-08
+- Identified Ray Data issue #67958, reproducing Disk Shuffle V2 resource leaks during mid-map cancellation, confirming the accumulation of 3 detached ShuffleFileServer actors and 3 temporary directories across repeated interruptions, and proposing lifecycle-aware cleanup.
+- Reviewed Ray Data PR #67949, independently validating TableBlockBuilder compaction, row/size accounting, insertion order, memory-estimation consistency, and schema evolution across Arrow and Pandas builders.
+
 2026-11-07
 - Opened Ray Data PR #67935 to optimize identical-schema Arrow concatenation, achieving a 4.22× speedup in direct benchmarks and up to 2.68× in block building, while validating regression tests and investigating Dataset iteration performance variability.
 - Reviewed Ray Data PR #67896, independently validating JSON expansion, key collisions, list preservation, custom decoder outputs, and image encoding/decoding across multiple edge cases.
@@ -73,7 +81,7 @@
 - Help review a Ray Serve PR (#66910) and identify a recovery edge case where redeploying the same configuration after terminal deployment actor failure does not reset retries or recover the deployment
 
 ## Total
-- 6 Issue/PR
+- 7 Issue/PR
     - **1. [Data] Reject duplicate synthesized column names #67164**  
     Prevents synthesized columns in Parquet DataSourceV2 from silently overwriting one another when they share the same name, such as a generated checkpoint ID colliding with the synthesized `path` or `row_hash` column. Adds early validation and regression tests for conflicting and non-conflicting synthesized column configurations.  
       - Update: PR #67157 later moved generated-ID binding from ParquetDatasourceV2 construction time to the plan-time BindGeneratedIdColumn rule, superseding the original implementation and incidentally preventing the silent overwrite. 
@@ -124,12 +132,21 @@
     - **6.[Data] Redundant schema unification overhead when concatenating Arrow tables with identical schemas #67814**  
     Identified redundant schema unification in Ray Data's transform_pyarrow.concat(), accounting for approximately 71% of concatenation time with identical Arrow schemas.
 
-        I reproduced the performance bottleneck and opened PR #67935 to introduce an identical-schema fast path while preserving existing schema reconciliation. The optimization achieved a 4.22× speedup in direct concatenation, up to 2.68× in block building, and up to 1.49× in batch assembly. I also validated regression tests and conducted additional Dataset iteration benchmarks, finding substantial runtime variability without a confirmed end-to-end regression.
+        I reproduced the performance bottleneck and opened PR #67935 to introduce an identical-schema fast path while preserving existing schema reconciliation. The optimization achieved a 4.22× speedup in direct concatenation, up to 2.68× in block building, and up to 1.49× in batch assembly. I also validated regression tests and conducted additional Dataset iteration benchmarks, finding substantial runtime variability without a confirmed end-to-end regression.  
 
-        Issue: https://github.com/ray-project/ray/issues/67814
+        **Update:** Addressed maintainer feedback by replacing metadata-stripping schema comparisons with `Schema.equals(check_metadata=False)` and removing a redundant concat fast path. Additional benchmarks confirmed a 2.87× direct concatenation speedup and an 88.1× improvement confirmed in `unify_schemas()` for identical-schema workloads. A/B/C comparisons further confirmed the original fast path's performance benefit without a consistent end-to-end Dataset speedup.
+
+        Issue: https://github.com/ray-project/ray/issues/67814  
         PR: https://github.com/ray-project/ray/pull/67935
 
-- 23 Review
+    - **7.[Data] Disk Shuffle V2 leaks detached ShuffleFileServer actors and temporary directories on mid-map cancellation #67958**  
+    Identified a resource lifecycle issue in Disk Shuffle V2, where cancelling a shuffle map task after creating a detached ShuffleFileServer but before returning its handle can leave actors and temporary directories untracked by cleanup.  
+
+        I developed a controlled cancellation reproducer on Ray 3.0.0.dev0 under WSL2 Ubuntu, verified normal-completion cleanup, and reproduced cumulative leaks across three interruptions. All 3 detached actors and 3 temporary directories persisted after driver reconnection. I traced the likely cause to cleanup relying on completed map handles and proposed tracking resources created by incomplete tasks, with cancellation-focused regression coverage.  
+
+        Issue: https://github.com/ray-project/ray/issues/67958
+
+- 25 Review
     - **<u>1. [Serve] Surface terminal deployment actor failures outside UPDATING #66910</u>**  
     This PR improves Ray Serve deployment status handling by surfacing terminal deployment actor failures across more deployment states instead of leaving deployments indefinitely marked as retrying.  
 
@@ -337,7 +354,7 @@
 
     ---
 
-    - **20. [Data] Vectorize LeRobot delta segment preparation and validate index contiguity #67845**  
+    - **20. <u>[Data] Vectorize LeRobot delta segment preparation and validate index contiguity #67845</u>**  
     This PR optimizes LeRobot's temporal-window processing by replacing per-row Python list conversions and dictionary lookups with vectorized NumPy and PyArrow operations. 
 
         I independently tested 24 cases covering reordered and non-contiguous episode IDs, duplicate and missing indices, episode boundaries, and varied anchor selections. The new implementation correctly rejected invalid index sequences while preserving expected delta computation behavior. 
@@ -349,7 +366,7 @@
 
     ---
 
-    - **21. <u>[Data] Fix std() on integer columns with values beyond 2\*\*53 #67891</u>**
+    - **21. <u>[Data] Fix std() on integer columns with values beyond 2\*\*53 #67891</u>**  
     This PR fixes an `ArrowInvalid` exception in Ray Data's standard deviation aggregation by allowing large integer columns to be cast to Float64 before computing squared differences.
 
         I independently tested six large-integer edge cases, including adjacent integers, negative values, and uint64 boundary values. Direct accessor-level testing revealed significant precision loss, including zero variance for distinct integers, and exposed a potential overflow issue in the existing integer-sum-based mean calculation. I prepared a minimal reproduction and review feedback to clarify the intended numerical accuracy guarantees.
@@ -369,10 +386,30 @@
 
     ---
 
-    - **23. [Data] Fix Concatenator missing-column handling when raise_if_missing=False #67912**  
+    - **23. <u>[Data] Fix Concatenator missing-column handling when raise_if_missing=False #67912</u>**  
     This PR fixes a correctness issue in Ray Data's `Concatenator` preprocessor, where missing input columns could trigger a `KeyError` despite `raise_if_missing=False`.  
 
         I independently reviewed and tested the updated implementation, covering partial and complete missing-column scenarios, `flatten=True`, non-default Pandas indices, and empty DataFrames. I also validated end-to-end Ray Dataset execution, including Arrow Tensor schema generation, `take_all()`, `to_pandas()`, and repartitioning.  
 
         PR: https://github.com/ray-project/ray/pull/67912  
         Review: https://github.com/ray-project/ray/pull/67912#issuecomment-6708442794
+
+    ---
+
+    - **24. <u>[Data] Fix TableBlockBuilder compaction row/size accounting and interleaved add_block ordering #67949</u>**  
+        This PR fixes row/size accounting during compaction and preserves insertion order when interleaving add() and add_block() operations.  
+
+        I independently validated both Arrow and Pandas builders through two rounds of testing, covering interleaved operations, memory-estimation cursor consistency, continued appends after build(), automatic threshold-based compaction, and schema evolution with reordered or missing columns. All tested scenarios passed, preserving row counts, insertion order, and expected values without observable correctness regressions.  
+
+        PR: https://github.com/ray-project/ray/pull/67949  
+        Review: https://github.com/ray-project/ray/pull/67949#issuecomment-6724224899
+
+    ---
+
+    - **25. <u>[Data] Add partition_filters to read_delta and take file sizes from the log #67900</u>**  
+    This PR introduces partition filtering for Delta Lake reads and optimizes file-size retrieval by using Delta Log metadata instead of per-file filesystem lookups.  
+
+        I independently reviewed and benchmarked metadata processing across 1K, 5K, and 20K active files, finding no consistent benefit from disabling metadata flattening. I also validated 13 partition values covering special characters, Unicode, and multiple URL-encoding levels, confirming correct file-size mappings without path collisions or mismatches.  
+
+        PR: https://github.com/ray-project/ray/pull/67900  
+        Review: https://github.com/ray-project/ray/pull/67900#issuecomment-6744803123
