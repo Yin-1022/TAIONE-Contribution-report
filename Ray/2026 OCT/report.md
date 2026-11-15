@@ -1,3 +1,5 @@
+**Reporting Period: 2026-10-14 to 2026-11-15**
+
 2026-11-15
 - Opened Ray Data PR #68171 to propagate unexpected metadata prefetch thread failures to the streaming executor, preserving the original exception and adding a cluster-independent regression test. Verified error propagation with the original reproducer.
 
@@ -85,7 +87,7 @@
 - Fix the comment of PR (#67164)
 
 2026-10-20
-- Help review Ray Data PR (#67154), locally verify a redundant double-copy path for NumPy batches, and raise the performance concern for follow-up discussion\
+- Help review Ray Data PR (#67154), locally verify a redundant double-copy path for NumPy batches, and raise the performance concern for follow-up discussion
 - Help review Ray Data PR (#67161) and raise a concern about whether forcing preserve_order=True in the test may hide the default ordering semantics of train_test_split(shuffle=False)
 
 2026-10-19
@@ -95,8 +97,13 @@
 - Help review a Ray Serve PR (#66910) and identify a recovery edge case where redeploying the same configuration after terminal deployment actor failure does not reset retries or recover the deployment
 
 ## Total
-- 8 Issue/PR 
-    (Raised 7 issues, 4 PR merged, 2 PR being reviewed, 1 issue waiting, 1 held)
+- 8 Issue/PR Contributions
+    (7 issues opened, 6 PRs submitted, including 1 based on an existing issue)
+    - 4 PRs/issues merged
+    - 2 PRs/issues under review
+    - 1 issue awaiting follow-up
+    - 1 issue on hold
+    ---
     - **<u>1. [Data] Reject duplicate synthesized column names #67164**</u>  
     Prevents synthesized columns in Parquet DataSourceV2 from silently overwriting one another when they share the same name, such as a generated checkpoint ID colliding with the synthesized `path` or `row_hash` column. Adds early validation and regression tests for conflicting and non-conflicting synthesized column configurations.  
       - Update: PR #67157 later moved generated-ID binding from ParquetDatasourceV2 construction time to the plan-time BindGeneratedIdColumn rule, superseding the original implementation and incidentally preventing the silent overwrite. 
@@ -118,7 +125,7 @@
 
     ---
 
-    - **<u>3.[Data] Dataset.mix does not consistently reject non-finite weights #67387</u>**
+    - **<u>3. [Data] Dataset.mix does not consistently reject non-finite weights #67387</u>**
     Identified inconsistent validation of non-finite weights in Dataset.mix(). The existing positivity-only check allows NaN and positive infinity to pass, while negative infinity is rejected as a positivity error rather than as a non-finite value.  
         
         I reproduced the behavior through the public Dataset.mix() API and traced the same validation assumption through both the logical Mix operator and physical MixOperator. Proposed requiring weights to be both finite and positive before normalization or execution, so NaN and ±inf are rejected consistently.  
@@ -150,7 +157,7 @@
 
     ---
 
-    - **<u>6.[Data] Redundant schema unification overhead when concatenating Arrow tables with identical schemas #67814</u>**  
+    - **<u>6. [Data] Redundant schema unification overhead when concatenating Arrow tables with identical schemas #67814</u>**  
     Identified redundant schema unification in Ray Data's transform_pyarrow.concat(), accounting for approximately 71% of concatenation time with identical Arrow schemas.
 
         I reproduced the performance bottleneck and opened PR #67935 to introduce an identical-schema fast path while preserving existing schema reconciliation. The optimization achieved a 4.22× speedup in direct concatenation, up to 2.68× in block building, and up to 1.49× in batch assembly. I also validated regression tests and conducted additional Dataset iteration benchmarks, finding substantial runtime variability without a confirmed end-to-end regression.  
@@ -163,7 +170,7 @@
 
     ---
 
-    - **<u>7.[Data] Disk Shuffle V2 leaks detached ShuffleFileServer actors and temporary directories on mid-map cancellation #67958</u>**  
+    - **<u>7. [Data] Disk Shuffle V2 leaks detached ShuffleFileServer actors and temporary directories on mid-map cancellation #67958</u>**  
     Identified a resource lifecycle issue in Disk Shuffle V2, where cancelling a shuffle map task after creating a detached ShuffleFileServer but before returning its handle can leave actors and temporary directories untracked by cleanup.  
 
         I developed a controlled cancellation reproducer on Ray 3.0.0.dev0 under WSL2 Ubuntu, verified normal-completion cleanup, and reproduced cumulative leaks across three interruptions. All 3 detached actors and 3 temporary directories persisted after driver reconnection. I traced the likely cause to cleanup relying on completed map handles and proposed tracking resources created by incomplete tasks, with cancellation-focused regression coverage.  
