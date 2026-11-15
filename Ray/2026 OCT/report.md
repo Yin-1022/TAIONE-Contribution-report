@@ -1,3 +1,18 @@
+2026-11-15
+- Opened Ray Data PR #68171 to propagate unexpected metadata prefetch thread failures to the streaming executor, preserving the original exception and adding a cluster-independent regression test. Verified error propagation with the original reproducer.
+
+2026-11-14
+- Reviewed Ray Data PR #68083, independently validating null-list handling through 1,000 randomized differential cases across List and LargeList arrays, plus 3 UDF-level tests covering chunked arrays and null struct fields.
+
+2026-11-13
+- Reviewed Ray Data PR #68094, validating lineage reconstruction with 72 existing tests, 4 adversarial cases covering overlapping attempts and independent plans, and an additional streaming test confirming deferred release callbacks for late-added child dependencies.
+
+2026-11-12
+- Identified Ray Data issue #68093, reproducing an unhandled metadata prefetch thread failure on current master, confirming stranded metadata, blocked task completion, and missing error propagation through process_completed_tasks(), and proposing explicit failure handling with regression coverage.
+
+2026-11-11
+- Opened Ray Data PR #68062 to fix contradictory warning and error behavior in Dataset.repartition(), preserving existing argument validation while adding a cluster-independent regression test with successful Red → Green verification.
+
 2026-11-09
 - Updated PR #67935 based on maintainer feedback by optimizing shared schema deduplication, removing a redundant concat fast path, and independently validating correctness and performance through regression tests and A/B/C benchmarks.
 - Reviewed Ray Data PR #67900, independently benchmarking Delta Log metadata overhead across 1K–20K files and validating file-size path mappings across 13 partition values, including special characters and multiple URL-encoding levels.
@@ -38,7 +53,6 @@
 - Reviewed Ray Data PR #67492 and verified Normalizer zero-row handling plus Vectorizer integer-count and missing-value behavior across multiple columns, append mode, and Pandas nullable values.
 - Reviewed Ray Data PR #67465 and identified a remaining correctness issue where NaN stratification keys miss the precomputed largest-remainder allocation, causing train_test_split() to return fewer test rows than requested.
 - Reviewed Ray Data PR #67524 and identified stale-cache correctness issues in OrdinalEncoder, OneHotEncoder, and LabelEncoder when encoder statistics are mutated in place without changing dictionary identity or size.
-
 
 2026-10-28
 - Opened PR #67505 for issue #67415 to fix asymmetric and multi-key join schema validation by checking each side against its configured keys and preserving positional key order.
@@ -81,8 +95,9 @@
 - Help review a Ray Serve PR (#66910) and identify a recovery edge case where redeploying the same configuration after terminal deployment actor failure does not reset retries or recover the deployment
 
 ## Total
-- 7 Issue/PR
-    - **1. [Data] Reject duplicate synthesized column names #67164**  
+- 8 Issue/PR 
+    (Raised 7 issues, 4 PR merged, 2 PR being reviewed, 1 issue waiting, 1 held)
+    - **<u>1. [Data] Reject duplicate synthesized column names #67164**</u>  
     Prevents synthesized columns in Parquet DataSourceV2 from silently overwriting one another when they share the same name, such as a generated checkpoint ID colliding with the synthesized `path` or `row_hash` column. Adds early validation and regression tests for conflicting and non-conflicting synthesized column configurations.  
       - Update: PR #67157 later moved generated-ID binding from ParquetDatasourceV2 construction time to the plan-time BindGeneratedIdColumn rule, superseding the original implementation and incidentally preventing the silent overwrite. 
         
@@ -90,46 +105,52 @@
         This avoids misreporting synthesized-column conflicts as input-data schema conflicts, provides more accurate guidance to users, and adds regression coverage to preserve the intended collision semantics across future generated-ID or synthesized-column changes.  
 
       PR: https://github.com/ray-project/ray/pull/67164  
-      Issue: https://github.com/ray-project/ray/issues/67002
+      Issue: https://github.com/ray-project/ray/issues/67002  
+      Status: Merged
 
     ---
 
-    - **2. [Data] Avoid counting terminal waits as output backpressure #67374**  
+    - **<u>2. [Data] Avoid counting terminal waits as output backpressure #67374</u>**  
     Identified and reported a pre-existing metrics accounting issue (#67312) while reviewing PR #67180, where exhausted tasks waiting only for terminal confirmation were incorrectly counted as experiencing output backpressure. Submitted a PR to distinguish genuine unread-output backpressure from terminal-only waits, with regression tests covering empty tasks, unread output, and pending output after stream exhaustion.  
     PR: https://github.com/ray-project/ray/pull/67374  
-    Issue: https://github.com/ray-project/ray/issues/67312
+    Issue: https://github.com/ray-project/ray/issues/67312  
+    Status: Merged
 
     ---
 
-    - **3.[Data] Dataset.mix does not consistently reject non-finite weights #67387**
+    - **<u>3.[Data] Dataset.mix does not consistently reject non-finite weights #67387</u>**
     Identified inconsistent validation of non-finite weights in Dataset.mix(). The existing positivity-only check allows NaN and positive infinity to pass, while negative infinity is rejected as a positivity error rather than as a non-finite value.  
         
         I reproduced the behavior through the public Dataset.mix() API and traced the same validation assumption through both the logical Mix operator and physical MixOperator. Proposed requiring weights to be both finite and positive before normalization or execution, so NaN and ±inf are rejected consistently.  
 
-        Issue: https://github.com/ray-project/ray/issues/67387
+        Issue: https://github.com/ray-project/ray/issues/67387  
+        Status: Held
 
     ---
 
-    - **4. [Data] Dataset.join(validate_schemas=True) mishandles asymmetric and multi-key joins #67415**  
+    - **<u>4. [Data] Dataset.join(validate_schemas=True) mishandles asymmetric and multi-key joins #67415</u>**  
         Identified two correctness issues in join schema validation: asymmetric on / right_on keys are checked against the wrong schemas, while multi-key types are collected in schema order instead of configured key order, causing valid joins to be rejected.  
 
         I reproduced both behaviors on master and opened PR #67505 to validate each side against its own configured keys, preserve positional key order, and add regression tests covering asymmetric and reordered multi-key joins. 
 
         Issue: https://github.com/ray-project/ray/issues/67415  
-        PR: https://github.com/ray-project/ray/pull/67505
+        PR: https://github.com/ray-project/ray/pull/67505  
+        Status: Merged
 
     ---
 
-    - **5. [Data] repartition() warns that shuffle is ignored before rejecting the same argument #67604**  
-        Identified a public API contract inconsistency in Dataset.repartition(): when target_num_rows_per_block is combined with shuffle=True, Ray first warns that shuffle will be ignored and then immediately raises a ValueError saying the combination is invalid.
+    - **<u>5. [Data] repartition() warns that shuffle is ignored before rejecting the same argument #67604</u>**  
+        Identified a public API contract inconsistency in Dataset.repartition(): when target_num_rows_per_block is combined with shuffle=True, Ray first warns that shuffle will be ignored and then immediately raises a ValueError saying the combination is invalid.  
 
-        I reproduced the behavior on current master, checked related issues and historical API intent, and proposed keeping the existing ValueError while removing the contradictory warning, with regression coverage to ensure the invalid combination produces one consistent response.
+        I reproduced the behavior on current master, reviewed related issues and historical API intent, and opened PR #68062 to remove the contradictory warning while preserving the existing validation behavior. I also added a cluster-independent regression test that verifies the expected ValueError without the misleading warning, confirmed its effectiveness through Red → Green testing, and refined the warning assertion following code review feedback.  
 
-        Issue: https://github.com/ray-project/ray/issues/67604
+        Issue: https://github.com/ray-project/ray/issues/67604  
+        PR: https://github.com/ray-project/ray/pull/68062  
+        Status: Pr waiting to be reviewed
 
     ---
 
-    - **6.[Data] Redundant schema unification overhead when concatenating Arrow tables with identical schemas #67814**  
+    - **<u>6.[Data] Redundant schema unification overhead when concatenating Arrow tables with identical schemas #67814</u>**  
     Identified redundant schema unification in Ray Data's transform_pyarrow.concat(), accounting for approximately 71% of concatenation time with identical Arrow schemas.
 
         I reproduced the performance bottleneck and opened PR #67935 to introduce an identical-schema fast path while preserving existing schema reconciliation. The optimization achieved a 4.22× speedup in direct concatenation, up to 2.68× in block building, and up to 1.49× in batch assembly. I also validated regression tests and conducted additional Dataset iteration benchmarks, finding substantial runtime variability without a confirmed end-to-end regression.  
@@ -137,16 +158,33 @@
         **Update:** Addressed maintainer feedback by replacing metadata-stripping schema comparisons with `Schema.equals(check_metadata=False)` and removing a redundant concat fast path. Additional benchmarks confirmed a 2.87× direct concatenation speedup and an 88.1× improvement confirmed in `unify_schemas()` for identical-schema workloads. A/B/C comparisons further confirmed the original fast path's performance benefit without a consistent end-to-end Dataset speedup.
 
         Issue: https://github.com/ray-project/ray/issues/67814  
-        PR: https://github.com/ray-project/ray/pull/67935
+        PR: https://github.com/ray-project/ray/pull/67935  
+        Status: Merged
 
-    - **7.[Data] Disk Shuffle V2 leaks detached ShuffleFileServer actors and temporary directories on mid-map cancellation #67958**  
+    ---
+
+    - **<u>7.[Data] Disk Shuffle V2 leaks detached ShuffleFileServer actors and temporary directories on mid-map cancellation #67958</u>**  
     Identified a resource lifecycle issue in Disk Shuffle V2, where cancelling a shuffle map task after creating a detached ShuffleFileServer but before returning its handle can leave actors and temporary directories untracked by cleanup.  
 
         I developed a controlled cancellation reproducer on Ray 3.0.0.dev0 under WSL2 Ubuntu, verified normal-completion cleanup, and reproduced cumulative leaks across three interruptions. All 3 detached actors and 3 temporary directories persisted after driver reconnection. I traced the likely cause to cleanup relying on completed map handles and proposed tracking resources created by incomplete tasks, with cancellation-focused regression coverage.  
 
-        Issue: https://github.com/ray-project/ray/issues/67958
+        Issue: https://github.com/ray-project/ray/issues/67958  
+        Status: Waiting for a prior PR to be merged
 
-- 25 Review
+    ---
+
+    - **<u>8. [Data] Metadata prefetch thread failures are not propagated to the streaming executor #68093</u>**  
+    Identified a failure propagation issue where an unhandled exception in `ThreadedMetadataFetcher` terminates the background thread without notifying the streaming executor, leaving deferred metadata and task completion pending.  
+
+        I developed a cluster-independent fault-injection reproducer on current master, confirmed that a single injected exception terminates the fetch thread while process_completed_tasks() reports no errors, and investigated the resulting no-progress timeout behavior.  
+
+        I subsequently implemented PR #68171 to capture unexpected background thread failures and propagate them through emit_ready_and_fire_done_callbacks(), preserving the original exception via __cause__. Added a regression test covering error propagation and repeated executor polling, verified the fix against the original reproducer, and passed 8 threaded executor tests.  
+
+        Issue: https://github.com/ray-project/ray/issues/68093  
+        PR: https://github.com/ray-project/ray/pull/68171  
+        Status: PR opened, awaiting maintainer review
+
+- 27 Review
     - **<u>1. [Serve] Surface terminal deployment actor failures outside UPDATING #66910</u>**  
     This PR improves Ray Serve deployment status handling by surfacing terminal deployment actor failures across more deployment states instead of leaving deployments indefinitely marked as retrying.  
 
@@ -413,3 +451,23 @@
 
         PR: https://github.com/ray-project/ray/pull/67900  
         Review: https://github.com/ray-project/ray/pull/67900#issuecomment-6744803123
+
+    ---
+
+    - **26. <u>[Data] (Data fault tolerance) Stop a lineage re-trace at a pending reconstruction task #68094</u>**  
+    This PR improves Ray Data lineage reconstruction by stopping redundant upstream tracing when a queued or running reconstruction task can already reproduce the required outputs.  
+
+        I independently reviewed the reconstruction logic and passed 72 existing lineage tracker tests, along with 4 adversarial cases covering overlapping reconstruction attempts, different failure orders, and independent reconstruction plans. I also tested late-added child dependencies during streaming reconstruction, confirming that their release callbacks are deferred until task completion.  
+
+        PR: https://github.com/ray-project/ray/pull/68094  
+        Review: https://github.com/ray-project/ray/pull/68094#issuecomment-6860153557
+
+    ---
+
+    - **27. <u>[Data] Handle null list slots that span child values in list.sort and list.flatten #68083</u>**  
+    This PR fixes incorrect parent-index alignment in Ray Data's `list.sort()` and `list.flatten()` when PyArrow null list slots span underlying child values, preventing length mismatches and incorrectly shifted output rows.  
+
+        I independently reviewed the fix using 1,000 randomized differential cases (500 List and 500 LargeList), covering sliced arrays and nested null-list scenarios against an independent Python reference. I also conducted 3 additional UDF-level checks involving chunked list sorting, null struct-field flattening, and chunked nested-list flattening.  
+
+        PR: https://github.com/ray-project/ray/pull/68083  
+        Review: https://github.com/ray-project/ray/pull/68083#issuecomment-6882751187  
